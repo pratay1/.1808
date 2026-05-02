@@ -33,12 +33,7 @@ public class GameState
         _carCheckpointIndex[playerCar] = 0;
         _carLapCount[playerCar] = 0;
 
-        // AI car – start near bottom‑right of the road, with waypoints around the oval track
-        var aiWaypoints = Track.GetWaypoints(16);
-        var aiCar = new Car(new PointF(600, 400), false, Color.Blue, aiWaypoints);
-        Cars.Add(aiCar);
-        _carCheckpointIndex[aiCar] = 0;
-        _carLapCount[aiCar] = 0;
+
     }
 
     private void InitialiseCheckpoints()
@@ -63,6 +58,9 @@ public class GameState
     {
         foreach (var car in Cars)
         {
+            // Save previous position for potential revert on collision
+            var previousPos = car.Position;
+
             // Player inputs only affect the player car
             bool u = car.IsPlayer && up;
             bool d = car.IsPlayer && down;
@@ -73,12 +71,9 @@ public class GameState
             // Barrier collision – use precise corner‑based detection
             if (Track.CollidesWithBarrier(car.GetCorners()))
             {
+                // Revert to previous safe position and stop movement
+                car.Position = previousPos;
                 car.Speed = 0;
-                // push back opposite to travel direction (simple approximation)
-                float rad = car.Angle * MathF.PI / 180f;
-                car.Position = new PointF(
-                    car.Position.X - MathF.Cos(rad) * 5,
-                    car.Position.Y - MathF.Sin(rad) * 5);
             }
 
             // Keep car inside the window – same logic as before but after barrier handling

@@ -89,7 +89,9 @@ public class Track
         return false;
     }
 
-    // Returns a set of evenly spaced waypoints around the inner edge of the track (used by AI)
+    // Returns the geometric centre of the track (used for collision normal calculations)
+    public PointF GetCenter() => new PointF(Background.Width / 2f, Background.Height / 2f);
+
     public PointF[] GetWaypoints(int count = 16)
     {
         // Re‑use the same geometry as the track constructor

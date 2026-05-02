@@ -28,7 +28,7 @@ public class GameState
     private void InitialiseCars()
     {
         // Player car – start near bottom‑left of the road
-        var playerCar = new Car(new PointF(150, 400), true, Color.Red);
+        var playerCar = new Car(new PointF(250, 300), true, Color.Red);
         Cars.Add(playerCar);
         _carCheckpointIndex[playerCar] = 0;
         _carLapCount[playerCar] = 0;
@@ -68,13 +68,37 @@ public class GameState
             bool r = car.IsPlayer && right;
             car.Update(dt, u, d, l, r);
 
-            // Barrier collision – use precise corner‑based detection
+            // Barrier collision – use precise corner‑based detection and sliding response
             if (Track.CollidesWithBarrier(car.GetCorners()))
             {
-                // Revert to previous safe position and stop movement
-                car.Position = previousPos;
-                car.Speed = 0;
+                // Compute current velocity vector
+                float rad = car.Angle * MathF.PI / 180f;
+                float vx = MathF.Cos(rad) * car.Speed;
+                float vy = MathF.Sin(rad) * car.Speed;
+
+                // Approximate surface normal as direction from track centre to car centre
+                var centre = Track.GetCenter();
+                float nx = car.Position.X + car.Size.Width / 2f - centre.X;
+                float ny = car.Position.Y + car.Size.Height / 2f - centre.Y;
+                float len = MathF.Sqrt(nx * nx + ny * ny);
+                if (len == 0) len = 1; // avoid divide‑by‑zero
+                nx /= len; ny /= len;
+
+                // Reflect velocity: v' = v - 2 (v·n) n
+                float dot = vx * nx + vy * ny;
+                float rvx = vx - 2 * dot * nx;
+                float rvy = vy - 2 * dot * ny;
+
+                // Update speed and angle based on reflected vector
+                car.Speed = MathF.Sqrt(rvx * rvx + rvy * rvy);
+                car.Angle = MathF.Atan2(rvy, rvx) * 180f / MathF.PI;
+
+                // Move the car slightly away from the barrier to avoid immediate re‑collision
+                car.Position = new PointF(
+                    car.Position.X + rvx * 0.1f,
+                    car.Position.Y + rvy * 0.1f);
             }
+
 
             // Keep car inside the window – same logic as before but after barrier handling
             car.Position = new PointF(

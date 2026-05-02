@@ -11,7 +11,7 @@ public class Car
     public float Speed;
     public float MaxSpeed = 8f;
     public float Acceleration = 0.2f;
-    public float TurnRate = 4f; // degrees per frame when at max speed
+    public float TurnRate = 4f; // degrees per frame at max speed
     public bool IsPlayer;
     public Color BodyColor;
     public readonly Size Size = new(40, 20);
@@ -31,7 +31,7 @@ public class Car
         _currentWaypoint = 0;
     }
 
-    // Called each frame. For player cars the input flags are passed, for AI they are ignored.
+    // Update called each frame. Player input flags are passed; AI ignores them.
     public void Update(float dt, bool up, bool down, bool left, bool right)
     {
         if (IsPlayer)
@@ -39,9 +39,9 @@ public class Car
             // Acceleration / braking
             if (up) Speed = MathF.Min(Speed + Acceleration, MaxSpeed);
             else if (down) Speed = MathF.Max(Speed - Acceleration, -MaxSpeed / 2);
-            else Speed *= 0.95f; // simple friction when no input
+            else Speed *= 0.95f; // simple friction
 
-            // Steering – only when speed != 0
+            // Steering – only when moving
             if (Speed != 0)
             {
                 if (left) Angle -= TurnRate * (Speed / MaxSpeed);
@@ -90,18 +90,45 @@ public class Car
         if (MathF.Sqrt(dx * dx + dy * dy) < 10f) _currentWaypoint = (_currentWaypoint + 1) % _waypoints.Length;
     }
 
-    // Render the car – draws a colored rectangle and a tiny white front bar
+    // Axis‑aligned bounding box (used for checkpoint detection)
+    public RectangleF Bounds => new RectangleF(Position.X, Position.Y, Size.Width, Size.Height);
+
+    // Returns the four corner points of the rotated car – used for precise barrier collision
+    public PointF[] GetCorners()
+    {
+        float cx = Position.X + Size.Width / 2f;
+        float cy = Position.Y + Size.Height / 2f;
+        float rad = Angle * MathF.PI / 180f;
+        float cos = MathF.Cos(rad);
+        float sin = MathF.Sin(rad);
+
+        var offsets = new[]
+        {
+            new PointF(-Size.Width / 2f, -Size.Height / 2f), // top‑left
+            new PointF( Size.Width / 2f, -Size.Height / 2f), // top‑right
+            new PointF( Size.Width / 2f,  Size.Height / 2f), // bottom‑right
+            new PointF(-Size.Width / 2f,  Size.Height / 2f)  // bottom‑left
+        };
+        var corners = new PointF[4];
+        for (int i = 0; i < 4; i++)
+        {
+            float ox = offsets[i].X * cos - offsets[i].Y * sin;
+            float oy = offsets[i].X * sin + offsets[i].Y * cos;
+            corners[i] = new PointF(cx + ox, cy + oy);
+        }
+        return corners;
+    }
+
+    // Render the car – draws a colored rectangle and a small white front bar
     public void Render(Graphics g)
     {
         var saved = g.Transform;
         g.TranslateTransform(Position.X + Size.Width / 2f, Position.Y + Size.Height / 2f);
         g.RotateTransform(Angle);
 
-        // Car body
         using var brush = new SolidBrush(BodyColor);
         g.FillRectangle(brush, -Size.Width / 2f, -Size.Height / 2f, Size.Width, Size.Height);
 
-        // White front bar (2x2 pixels) placed at the front edge
         const int barSize = 2;
         float frontX = Size.Width / 2f - barSize / 2f;
         float frontY = -barSize / 2f;
@@ -110,7 +137,4 @@ public class Car
 
         g.Transform = saved;
     }
-
-    // Axis‑aligned bounding box for collision (simple approximation)
-    public RectangleF Bounds => new RectangleF(Position.X, Position.Y, Size.Width, Size.Height);
 }

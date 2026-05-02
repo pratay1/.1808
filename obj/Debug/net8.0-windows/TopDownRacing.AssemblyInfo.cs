@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TopDownRacing")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+67dc47b3c1943b83120522fd1d4f11149ce6721f")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+fa33865fce3670c77ab415d668aa71e291aa6a14")]
 [assembly: System.Reflection.AssemblyProductAttribute("TopDownRacing")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TopDownRacing")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

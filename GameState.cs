@@ -33,15 +33,9 @@ public class GameState
         _carCheckpointIndex[playerCar] = 0;
         _carLapCount[playerCar] = 0;
 
-        // AI car – start near bottom‑right of the road, with simple waypoint loop around the road edges
-        var waypoints = new[]
-        {
-            new PointF(600, 150), // top‑right corner of the road
-            new PointF(200, 150), // top‑left
-            new PointF(200, 450), // bottom‑left
-            new PointF(600, 450)  // bottom‑right
-        };
-        var aiCar = new Car(new PointF(600, 400), false, Color.Blue, waypoints);
+        // AI car – start near bottom‑right of the road, with waypoints around the oval track
+        var aiWaypoints = Track.GetWaypoints(16);
+        var aiCar = new Car(new PointF(600, 400), false, Color.Blue, aiWaypoints);
         Cars.Add(aiCar);
         _carCheckpointIndex[aiCar] = 0;
         _carLapCount[aiCar] = 0;
@@ -76,8 +70,8 @@ public class GameState
             bool r = car.IsPlayer && right;
             car.Update(dt, u, d, l, r);
 
-            // Barrier collision – simple response: stop the car and push it back a bit
-            if (Track.CollidesWithBarrier(car.Bounds))
+            // Barrier collision – use precise corner‑based detection
+            if (Track.CollidesWithBarrier(car.GetCorners()))
             {
                 car.Speed = 0;
                 // push back opposite to travel direction (simple approximation)

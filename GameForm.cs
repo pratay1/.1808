@@ -1,24 +1,15 @@
 using System;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace TopDownRacing;
 
 public class GameForm : Form
 {
-    private const int CarWidth = 40;
-    private const int CarHeight = 20;
-    private const float Acceleration = 0.2f;
-    private const float MaxSpeed = 8f;
-    private const float TurnRate = 4f; // degrees per frame
-
     private Timer _timer;
-    private Bitmap _trackBitmap;
-    private Bitmap _carBitmap;
-
-    private PointF _carPos = new(200, 200);
-    private float _carAngle; // degrees
-    private float _speed;
+    private GameState _gameState;
+    private bool _up, _down, _left, _right;
 
     public GameForm()
     {
@@ -26,30 +17,18 @@ public class GameForm : Form
         ClientSize = new Size(800, 600);
         DoubleBuffered = true;
 
-        // simple track (green field) placeholder
-        _trackBitmap = new Bitmap(ClientSize.Width, ClientSize.Height);
-        using (var g = Graphics.FromImage(_trackBitmap))
-        {
-            g.Clear(Color.DarkGreen);
-        }
+        // Initialise game state (track, cars, checkpoints)
+        _gameState = new GameState();
 
-        // simple car rectangle sprite
-        _carBitmap = new Bitmap(CarWidth, CarHeight);
-        using (var g = Graphics.FromImage(_carBitmap))
-        {
-            g.Clear(Color.Transparent);
-            g.FillRectangle(Brushes.Red, 0, 0, CarWidth, CarHeight);
-        }
-
-        _timer = new Timer { Interval = 16 }; // ~60 FPS
+        // Timer drives the game loop (~60 FPS)
+        _timer = new Timer { Interval = 16 };
         _timer.Tick += OnTick;
         _timer.Start();
 
+        // Hook keyboard events for player input
         KeyDown += OnKeyDown;
         KeyUp += OnKeyUp;
     }
-
-    private bool _up, _down, _left, _right;
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
     {
@@ -91,41 +70,41 @@ public class GameForm : Form
 
     private void OnTick(object? sender, EventArgs e)
     {
-        // acceleration / braking
-        if (_up) _speed = MathF.Min(_speed + Acceleration, MaxSpeed);
-        else if (_down) _speed = MathF.Max(_speed - Acceleration, -MaxSpeed / 2);
-        else _speed = _speed * 0.95f;
+        // Update all cars – provide the current input flags only for the player car
+        _gameState.Update(0.016f, _up, _down, _left, _right);
 
-        // steering only when moving
-        if (_speed != 0)
+        // If someone has completed the required laps, stop the timer and show a message box
+        if (_gameState.IsRaceFinished(out var winner))
         {
-            if (_left) _carAngle -= TurnRate * (_speed / MaxSpeed);
-            if (_right) _carAngle += TurnRate * (_speed / MaxSpeed);
+            _timer.Stop();
+            string msg = winner?.IsPlayer == true ? "You win!" : "AI wins!";
+            MessageBox.Show(msg, "Race Finished", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
-        // move forward
-        float rad = _carAngle * MathF.PI / 180f;
-        _carPos.X += MathF.Cos(rad) * _speed;
-        _carPos.Y += MathF.Sin(rad) * _speed;
-
-        // keep inside bounds
-        _carPos.X = Math.Max(0, Math.Min(_carPos.X, ClientSize.Width - CarWidth));
-        _carPos.Y = Math.Max(0, Math.Min(_carPos.Y, ClientSize.Height - CarHeight));
-
-        Invalidate();
+        Invalidate(); // request repaint
     }
 
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
         var g = e.Graphics;
-        g.DrawImage(_trackBitmap, 0, 0);
+        // Draw track background
+        g.DrawImage(_gameState.Track.Background, 0, 0);
 
-        // draw rotated car
-        g.TranslateTransform(_carPos.X + CarWidth / 2, _carPos.Y + CarHeight / 2);
-        g.RotateTransform(_carAngle);
-        g.TranslateTransform(-CarWidth / 2, -CarHeight / 2);
-        g.DrawImage(_carBitmap, 0, 0);
-        g.ResetTransform();
+        // Render each car (player and AI)
+        foreach (var car in _gameState.Cars)
+        {
+            car.Render(g);
+        }
+
+        // Simple HUD – show player lap count and speed
+        if (_gameState.Cars.FirstOrDefault(c => c.IsPlayer) is Car player)
+        {
+            int lap = _gameState.GetLapCount(player) + 1; // laps are 1‑based for display
+            string hud = $"Lap: {lap}/{_gameState.LapsToWin}   Speed: {player.Speed:0.0}";
+            using var hudFont = new Font("Segoe UI", 12);
+            using var hudBrush = new SolidBrush(Color.White);
+            g.DrawString(hud, hudFont, hudBrush, new PointF(10, 10));
+        }
     }
 }

@@ -1,0 +1,15 @@
+C:\Users\prata\.1808\obj\Debug\net8.0-windows\TopDownRacing.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\prata\.1808\obj\Debug\net8.0-windows\TopDownRacing.AssemblyInfoInputs.cache
+C:\Users\prata\.1808\obj\Debug\net8.0-windows\TopDownRacing.AssemblyInfo.cs
+C:\Users\prata\.1808\obj\Debug\net8.0-windows\TopDownRacing.csproj.CoreCompileInputs.cache
+C:\Users\prata\.1808\obj\Debug\net8.0-windows\TopDownRacing.sourcelink.json
+C:\Users\prata\.1808\bin\Debug\net8.0-windows\TopDownRacing.exe
+C:\Users\prata\.1808\bin\Debug\net8.0-windows\TopDownRacing.deps.json
+C:\Users\prata\.1808\bin\Debug\net8.0-windows\TopDownRacing.runtimeconfig.json
+C:\Users\prata\.1808\bin\Debug\net8.0-windows\TopDownRacing.dll
+C:\Users\prata\.1808\bin\Debug\net8.0-windows\TopDownRacing.pdb
+C:\Users\prata\.1808\obj\Debug\net8.0-windows\TopDownRacing.dll
+C:\Users\prata\.1808\obj\Debug\net8.0-windows\refint\TopDownRacing.dll
+C:\Users\prata\.1808\obj\Debug\net8.0-windows\TopDownRacing.pdb
+C:\Users\prata\.1808\obj\Debug\net8.0-windows\TopDownRacing.genruntimeconfig.cache
+C:\Users\prata\.1808\obj\Debug\net8.0-windows\ref\TopDownRacing.dll

@@ -7,7 +7,7 @@ namespace TopDownRacing;
 public class Track
 {
     public Bitmap Background { get; private set; }
-    private bool[,] _barrierMask; // true = barrier pixel
+    private bool[,] _barrierMask = null!; // true = barrier pixel
     public Size Size => Background.Size;
 
     // Procedural track: an oval road with a thick red border acting as barrier
@@ -94,10 +94,9 @@ public class Track
 
     public PointF[] GetWaypoints(int count = 16)
     {
-        // Re‑use the same geometry as the track constructor
+        // Re-use the same geometry as the track constructor
         int margin = 80; // same as above
         int roadWidth = 150;
-        int borderWidth = 20;
         // Outer ellipse bounds (same as used for drawing)
         var outerRect = new Rectangle(margin, margin, Background.Width - 2 * margin, Background.Height - 2 * margin);
         // Inner ellipse is the drivable area (outerRect contracted by roadWidth)

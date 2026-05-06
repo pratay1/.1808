@@ -119,37 +119,37 @@ public class Car
         return corners;
     }
 
-        // Render the car – draws a stylized red car with a white front bar
-        public void Render(Graphics g)
-        {
-            var saved = g.Transform;
-            g.TranslateTransform(Position.X + Size.Width / 2f, Position.Y + Size.Height / 2f);
-            g.RotateTransform(Angle);
+    // Render the car - draws a stylized red car with a white front bar
+    public void Render(Graphics g)
+    {
+        var saved = g.Transform;
+        g.TranslateTransform(Position.X + Size.Width / 2f, Position.Y + Size.Height / 2f);
+        g.RotateTransform(Angle);
 
-            // Draw car body as a rounded rectangle (more polished look)
-            using var bodyPath = new System.Drawing.Drawing2D.GraphicsPath();
-            float radius = 4f;
-            var rect = new RectangleF(-Size.Width / 2f, -Size.Height / 2f, Size.Width, Size.Height);
-            bodyPath.AddArc(rect.X, rect.Y, radius * 2, radius * 2, 180, 90);
-            bodyPath.AddArc(rect.Right - radius * 2, rect.Y, radius * 2, radius * 2, 270, 90);
-            bodyPath.AddArc(rect.Right - radius * 2, rect.Bottom - radius * 2, radius * 2, radius * 2, 0, 90);
-            bodyPath.AddArc(rect.X, rect.Bottom - radius * 2, radius * 2, radius * 2, 90, 90);
-            bodyPath.CloseFigure();
-            using var bodyBrush = new SolidBrush(BodyColor);
-            g.FillPath(bodyBrush, bodyPath);
+        // Draw car body as a rounded rectangle (more polished look)
+        using var bodyPath = new System.Drawing.Drawing2D.GraphicsPath();
+        float radius = 4f;
+        var rect = new RectangleF(-Size.Width / 2f, -Size.Height / 2f, Size.Width, Size.Height);
+        bodyPath.AddArc(rect.X, rect.Y, radius * 2, radius * 2, 180, 90);
+        bodyPath.AddArc(rect.Right - radius * 2, rect.Y, radius * 2, radius * 2, 270, 90);
+        bodyPath.AddArc(rect.Right - radius * 2, rect.Bottom - radius * 2, radius * 2, radius * 2, 0, 90);
+        bodyPath.AddArc(rect.X, rect.Bottom - radius * 2, radius * 2, radius * 2, 90, 90);
+        bodyPath.CloseFigure();
+        using var bodyBrush = new SolidBrush(BodyColor);
+        g.FillPath(bodyBrush, bodyPath);
 
-            // Simple roof shape – a smaller rectangle on top
-            var roofRect = new RectangleF(-Size.Width * 0.2f, -Size.Height * 0.6f, Size.Width * 0.4f, Size.Height * 0.4f);
-            using var roofBrush = new SolidBrush(Color.FromArgb(200, 200, 200)); // light gray roof
-            g.FillRectangle(roofBrush, roofRect);
+        // Simple roof shape - a smaller rectangle on top
+        var roofRect = new RectangleF(-Size.Width * 0.2f, -Size.Height * 0.6f, Size.Width * 0.4f, Size.Height * 0.4f);
+        using var roofBrush = new SolidBrush(Color.FromArgb(200, 200, 200)); // light gray roof
+        g.FillRectangle(roofBrush, roofRect);
 
-            // White front bar (2x2 pixels) placed at the front edge
-            const int barSize = 2;
-            float frontX = Size.Width / 2f - barSize / 2f;
-            float frontY = -barSize / 2f;
-            using var white = new SolidBrush(Color.White);
-            g.FillRectangle(white, frontX, frontY, barSize, barSize);
+        // White front bar (2x2 pixels) placed at the front edge
+        const int barSize = 2;
+        float frontX = Size.Width / 2f - barSize / 2f;
+        float frontY = -barSize / 2f;
+        using var white = new SolidBrush(Color.White);
+        g.FillRectangle(white, frontX, frontY, barSize, barSize);
 
-            g.Transform = saved;
-        }
+        g.Transform = saved;
+    }
 }

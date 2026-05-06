@@ -64,8 +64,6 @@ public class GameState
                 _carCheckpointIndex[car] = 0;
                 _carLapCount[car] = 0;
             }
-            // Save previous position for potential revert on collision
-            var previousPos = car.Position;
 
             // Player inputs only affect the player car
             bool u = car.IsPlayer && up;

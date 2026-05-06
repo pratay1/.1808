@@ -58,6 +58,12 @@ public class GameState
     {
         foreach (var car in Cars)
         {
+            // Ensure dictionaries contain an entry for this car (prevents KeyNotFoundException)
+            if (!_carCheckpointIndex.ContainsKey(car))
+            {
+                _carCheckpointIndex[car] = 0;
+                _carLapCount[car] = 0;
+            }
             // Save previous position for potential revert on collision
             var previousPos = car.Position;
 

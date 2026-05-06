@@ -64,8 +64,8 @@ public class Track
             for (int x = 0; x < w; x++)
             {
                 var c = Background.GetPixel(x, y);
-                // Treat any pixel that is exactly red as a barrier
-                if (c.R == 255 && c.G == 0 && c.B == 0) _barrierMask[x, y] = true;
+                // Treat any pixel that is close to pure red as a barrier (tolerate antialiasing)
+                if (c.R > 200 && c.G < 50 && c.B < 50) _barrierMask[x, y] = true;
             }
         }
     }

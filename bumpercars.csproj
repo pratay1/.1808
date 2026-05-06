@@ -3,7 +3,8 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
-    <RootNamespace>TopDownRacing</RootNamespace>
+    <RootNamespace>bumpercars</RootNamespace>
     <Nullable>enable</Nullable>
+    <AssemblyName>bumpercars</AssemblyName>
   </PropertyGroup>
 </Project>

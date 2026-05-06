@@ -1,154 +1,179 @@
 using System;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 
-namespace TopDownRacing;
+namespace bumpercars;
 
 public class Car
 {
     public PointF Position;
-    public float Angle; // degrees
-    public float Speed;
+    public float Angle;
+    public float VelocityX;
+    public float VelocityY;
+    public float Speed => MathF.Sqrt(VelocityX * VelocityX + VelocityY * VelocityY);
     public float MaxSpeed = 8f;
-    public float Acceleration = 0.2f;
-    public float TurnRate = 4f; // degrees per frame at max speed
+    public float Acceleration = 0.15f;
+    public float TurnRate = 4f;
+    public float Drag = 0.985f;
+    public float Grip = 0.92f;
+    public float DriftGrip = 0.15f;
     public bool IsPlayer;
+    public bool IsDrifting;
+    public float LastNonDriftAngle;
     public Color BodyColor;
-    public readonly Size Size = new(40, 20);
 
-    // AI waypoint data (optional)
-    private readonly PointF[] _waypoints;
-    private int _currentWaypoint;
+    public readonly float Width = 40f;
+    public readonly float Height = 20f;
+    public Size Size => new Size((int)Width, (int)Height);
 
-    public Car(PointF startPos, bool isPlayer, Color bodyColor, PointF[]? waypoints = null)
+    public Car(PointF startPos, bool isPlayer, Color bodyColor)
     {
         Position = startPos;
         Angle = 0f;
-        Speed = 0f;
+        LastNonDriftAngle = 0f;
+        VelocityX = 0f;
+        VelocityY = 0f;
         IsPlayer = isPlayer;
         BodyColor = bodyColor;
-        _waypoints = waypoints ?? Array.Empty<PointF>();
-        _currentWaypoint = 0;
     }
 
-    // Update called each frame. Player input flags are passed; AI ignores them.
-    public void Update(float dt, bool up, bool down, bool left, bool right)
+    public void Update(float dt, bool up, bool down, bool left, bool right, bool drift)
     {
+        float speed = Speed;
+        float maxSpeedThreshold = MaxSpeed * 0.2f;
+        bool canPivotTurn = speed < maxSpeedThreshold && drift;
+
+        IsDrifting = drift && !canPivotTurn;
+
         if (IsPlayer)
         {
-            // Acceleration / braking
-            if (up) Speed = MathF.Min(Speed + Acceleration, MaxSpeed);
-            else if (down) Speed = MathF.Max(Speed - Acceleration, -MaxSpeed / 2);
-            else Speed *= 0.95f; // simple friction
+            float rad = (Angle - 90f) * MathF.PI / 180f;
 
-            // Steering – only when moving
-            if (Speed != 0)
+            if (up)
             {
-                if (left) Angle -= TurnRate * (Speed / MaxSpeed);
-                if (right) Angle += TurnRate * (Speed / MaxSpeed);
+                VelocityX += MathF.Cos(rad) * Acceleration;
+                VelocityY += MathF.Sin(rad) * Acceleration;
+            }
+
+            if (canPivotTurn)
+            {
+                // Pivot turn while moving slow and holding drift
+                if (left) Angle -= TurnRate;
+                if (right) Angle += TurnRate;
+            }
+            else if (speed > 0.1f)
+            {
+                // Normal steering
+                float turnFactor = Math.Min(speed / MaxSpeed, 1f);
+                if (left) Angle -= TurnRate * turnFactor;
+                if (right) Angle += TurnRate * turnFactor;
+            }
+
+            // Track last angle when not drifting for pivot return
+            if (!drift)
+            {
+                LastNonDriftAngle = Angle;
             }
         }
-        else
+
+        // Apply grip
+        if (!canPivotTurn)
         {
-            UpdateAI(dt);
-        }
-
-        // Move forward based on current angle and speed
-        float rad = Angle * MathF.PI / 180f;
-        Position.X += MathF.Cos(rad) * Speed;
-        Position.Y += MathF.Sin(rad) * Speed;
-    }
-
-    // Simple waypoint‑following AI
-    private void UpdateAI(float dt)
-    {
-        if (_waypoints.Length == 0) return;
-
-        var target = _waypoints[_currentWaypoint];
-        float dx = target.X - Position.X;
-        float dy = target.Y - Position.Y;
-        float targetAngle = MathF.Atan2(dy, dx) * 180f / MathF.PI;
-
-        // Normalise angle difference to [-180,180]
-        float diff = ((targetAngle - Angle + 540) % 360) - 180;
-
-        // Turn towards target gradually
-        if (MathF.Abs(diff) > 2f)
-        {
-            Angle += MathF.Sign(diff) * TurnRate * (Speed / MaxSpeed);
+            ApplyGrip(drift);
         }
         else
         {
-            Angle = targetAngle; // snap when close
+            // When pivot turning, maintain velocity direction, very low grip
+            float gripAmount = DriftGrip;
+            VelocityX *= (1f - gripAmount) + gripAmount;
+            VelocityY *= (1f - gripAmount) + gripAmount;
         }
 
-        // Accelerate when roughly facing target, otherwise slow down
-        if (MathF.Abs(diff) < 30f) Speed = MathF.Min(Speed + Acceleration, MaxSpeed);
-        else Speed *= 0.94f;
+        // Apply drag (higher after drift release)
+        float dragAmount = (IsDrifting && !drift) ? 0.92f : Drag;
+        VelocityX *= dragAmount;
+        VelocityY *= dragAmount;
 
-        // Switch to next waypoint when close enough
-        if (MathF.Sqrt(dx * dx + dy * dy) < 10f) _currentWaypoint = (_currentWaypoint + 1) % _waypoints.Length;
+        // Clamp speed
+        if (Speed > MaxSpeed)
+        {
+            float scale = MaxSpeed / Speed;
+            VelocityX *= scale;
+            VelocityY *= scale;
+        }
+
+        Position.X += VelocityX;
+        Position.Y += VelocityY;
     }
 
-    // Axis‑aligned bounding box (used for checkpoint detection)
-    public RectangleF Bounds => new RectangleF(Position.X, Position.Y, Size.Width, Size.Height);
-
-    // Returns the four corner points of the rotated car – used for precise barrier collision
-    public PointF[] GetCorners()
+    private void ApplyGrip(bool drift)
     {
-        float cx = Position.X + Size.Width / 2f;
-        float cy = Position.Y + Size.Height / 2f;
-        float rad = Angle * MathF.PI / 180f;
-        float cos = MathF.Cos(rad);
-        float sin = MathF.Sin(rad);
+        float speed = Speed;
+        if (speed < 0.01f) return;
 
-        var offsets = new[]
-        {
-            new PointF(-Size.Width / 2f, -Size.Height / 2f), // top‑left
-            new PointF( Size.Width / 2f, -Size.Height / 2f), // top‑right
-            new PointF( Size.Width / 2f,  Size.Height / 2f), // bottom‑right
-            new PointF(-Size.Width / 2f,  Size.Height / 2f)  // bottom‑left
-        };
-        var corners = new PointF[4];
-        for (int i = 0; i < 4; i++)
-        {
-            float ox = offsets[i].X * cos - offsets[i].Y * sin;
-            float oy = offsets[i].X * sin + offsets[i].Y * cos;
-            corners[i] = new PointF(cx + ox, cy + oy);
-        }
-        return corners;
+        float velAngle = MathF.Atan2(VelocityY, VelocityX) * 180f / MathF.PI;
+        float carAngle = Angle - 90f;
+
+        float angleDiff = carAngle - velAngle;
+        while (angleDiff > 180) angleDiff -= 360;
+        while (angleDiff < -180) angleDiff += 360;
+
+        float diffRad = angleDiff * MathF.PI / 180f;
+        float cosDiff = MathF.Cos(diffRad);
+        float sinDiff = MathF.Sin(diffRad);
+
+        float forwardSpeed = speed * cosDiff;
+        float lateralSpeed = speed * sinDiff;
+
+        float gripAmount = drift ? DriftGrip : Grip;
+        lateralSpeed *= gripAmount;
+
+        float newSpeed = MathF.Sqrt(forwardSpeed * forwardSpeed + lateralSpeed * lateralSpeed);
+        float newAngle = velAngle + angleDiff * (1 - gripAmount);
+
+        float newRad = newAngle * MathF.PI / 180f;
+        VelocityX = newSpeed * MathF.Cos(newRad);
+        VelocityY = newSpeed * MathF.Sin(newRad);
     }
 
-    // Render the car - draws a stylized red car with a white front bar
+    public PointF GetCenter()
+    {
+        return new PointF(Position.X + Width / 2f, Position.Y + Height / 2f);
+    }
+
     public void Render(Graphics g)
     {
+        var center = GetCenter();
         var saved = g.Transform;
-        g.TranslateTransform(Position.X + Size.Width / 2f, Position.Y + Size.Height / 2f);
-        g.RotateTransform(Angle);
+        g.TranslateTransform(center.X, center.Y);
+        g.RotateTransform(Angle - 90f);
 
-        // Draw car body as a rounded rectangle (more polished look)
-        using var bodyPath = new System.Drawing.Drawing2D.GraphicsPath();
-        float radius = 4f;
-        var rect = new RectangleF(-Size.Width / 2f, -Size.Height / 2f, Size.Width, Size.Height);
-        bodyPath.AddArc(rect.X, rect.Y, radius * 2, radius * 2, 180, 90);
-        bodyPath.AddArc(rect.Right - radius * 2, rect.Y, radius * 2, radius * 2, 270, 90);
-        bodyPath.AddArc(rect.Right - radius * 2, rect.Bottom - radius * 2, radius * 2, radius * 2, 0, 90);
-        bodyPath.AddArc(rect.X, rect.Bottom - radius * 2, radius * 2, radius * 2, 90, 90);
-        bodyPath.CloseFigure();
-        using var bodyBrush = new SolidBrush(BodyColor);
-        g.FillPath(bodyBrush, bodyPath);
+        float hw = Width / 2f;
+        float hh = Height / 2f;
 
-        // Simple roof shape - a smaller rectangle on top
-        var roofRect = new RectangleF(-Size.Width * 0.2f, -Size.Height * 0.6f, Size.Width * 0.4f, Size.Height * 0.4f);
-        using var roofBrush = new SolidBrush(Color.FromArgb(200, 200, 200)); // light gray roof
-        g.FillRectangle(roofBrush, roofRect);
+        var sb = new SolidBrush(Color.FromArgb(60, 0, 0, 0));
+        g.FillRectangle(sb, (int)(-hw + 2), (int)(-hh + 3), (int)Width, (int)Height);
 
-        // White front bar (2x2 pixels) placed at the front edge
-        const int barSize = 2;
-        float frontX = Size.Width / 2f - barSize / 2f;
-        float frontY = -barSize / 2f;
-        using var white = new SolidBrush(Color.White);
-        g.FillRectangle(white, frontX, frontY, barSize, barSize);
+        var wb = new SolidBrush(Color.FromArgb(30, 30, 30));
+        g.FillRectangle(wb, (int)(hw * 0.4f), (int)(-hh - 2), 8, 4);
+        g.FillRectangle(wb, (int)(hw * 0.4f), (int)(hh - 2), 8, 4);
+        g.FillRectangle(wb, (int)(-hw - 6), (int)(-hh - 2), 8, 4);
+        g.FillRectangle(wb, (int)(-hw - 6), (int)(hh - 2), 8, 4);
+
+        var bb = new SolidBrush(BodyColor);
+        g.FillRectangle(bb, (int)(-hw), (int)(-hh), (int)Width, (int)Height);
+
+        var wsb = new SolidBrush(Color.FromArgb(150, 200, 255));
+        g.FillRectangle(wsb, (int)(hw * 0.15f), (int)(-hh + 2), (int)(hw * 0.35f), (int)(Height - 4));
+
+        int rc = BodyColor.R + 35;
+        int gc = BodyColor.G + 35;
+        int bc = BodyColor.B + 35;
+        var rb = new SolidBrush(Color.FromArgb(rc > 255 ? 255 : rc, gc > 255 ? 255 : gc, bc > 255 ? 255 : bc));
+        g.FillRectangle(rb, (int)(-hw * 0.35f), (int)(-hh + 3), (int)(hw * 0.6f), (int)(Height - 6));
+
+        var lb = new SolidBrush(Color.FromArgb(255, 255, 150));
+        g.FillRectangle(lb, (int)(hw - 3), (int)(-hh + 3), 3, 4);
+        g.FillRectangle(lb, (int)(hw - 3), (int)(hh - 7), 3, 4);
 
         g.Transform = saved;
     }

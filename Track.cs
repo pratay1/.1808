@@ -2,7 +2,7 @@ using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 
-namespace TopDownRacing;
+namespace bumpercars;
 
 public class Track
 {
@@ -10,67 +10,71 @@ public class Track
     private bool[,] _barrierMask = null!; // true = barrier pixel
     public Size Size => Background.Size;
 
-    // Procedural track: an oval road with a thick red border acting as barrier
+    // Arena settings
+    public int WallThickness { get; private set; } = 30;
+    public int InnerMargin => WallThickness;
+
+    // Square arena with black walls and dark grey floor
     public Track(int width = 800, int height = 600)
     {
+        WallThickness = 30;
         Background = new Bitmap(width, height);
         using (var g = Graphics.FromImage(Background))
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.Clear(Color.DarkGreen); // grass
 
-            // Parameters for the track
-            int margin = 80; // distance from window edge to outer road edge
-            int roadWidth = 150; // total width of the road (including both lanes)
-            int borderWidth = 20; // red barrier thickness
+            // Dark grey floor (arcade bumper car style)
+            g.Clear(Color.FromArgb(60, 60, 60));
 
-            // Outer ellipse defines the outer edge of the road (including half of the border)
-            var outerRect = new Rectangle(margin, margin, width - 2 * margin, height - 2 * margin);
+            // Draw black walls on all four sides with rounded corners
+            int wt = WallThickness;
+            using var wallBrush = new SolidBrush(Color.FromArgb(20, 20, 20));
 
-            // Inner ellipse defines the inner edge of the road (leaving space for the inside curb)
-            var innerRect = Rectangle.Inflate(outerRect, -roadWidth, -roadWidth);
+            // Top wall
+            g.FillRectangle(wallBrush, 0, 0, width, wt);
+            // Bottom wall
+            g.FillRectangle(wallBrush, 0, height - wt, width, wt);
+            // Left wall
+            g.FillRectangle(wallBrush, 0, 0, wt, height);
+            // Right wall
+            g.FillRectangle(wallBrush, width - wt, 0, wt, height);
 
-            // Build a donut‑shaped path for the road surface
-            using var roadPath = new System.Drawing.Drawing2D.GraphicsPath();
-            roadPath.AddEllipse(outerRect);
-            roadPath.AddEllipse(innerRect);
-            roadPath.FillMode = System.Drawing.Drawing2D.FillMode.Winding;
+            // Corner patches to fill gaps
+            g.FillRectangle(wallBrush, 0, 0, wt, wt);
+            g.FillRectangle(wallBrush, width - wt, 0, wt, wt);
+            g.FillRectangle(wallBrush, 0, height - wt, wt, wt);
+            g.FillRectangle(wallBrush, width - wt, height - wt, wt, wt);
 
-            // Fill the road with a dark‑gray asphalt color
-            using var asphaltBrush = new SolidBrush(Color.FromArgb(70, 70, 70));
-            g.FillPath(asphaltBrush, roadPath);
-
-            // Draw lane markings – a dashed white line roughly in the centre of the road
-            var midRect = Rectangle.Inflate(outerRect, -(roadWidth / 2), -(roadWidth / 2));
-            using var lanePen = new Pen(Color.White, 2) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dash };
-            g.DrawEllipse(lanePen, midRect);
-
-            // Draw a thick red border that will act as a barrier (centered on the outer ellipse edge)
-            using var borderPen = new Pen(Color.Red, borderWidth);
-            g.DrawEllipse(borderPen, outerRect);
+            // Inner play area outline (subtle)
+            int im = wt + 5;
+            using var innerPen = new Pen(Color.FromArgb(40, 40, 40), 2);
+            g.DrawRectangle(innerPen, im, im, width - 2 * im, height - 2 * im);
         }
 
         BuildBarrierMask();
     }
-
 
     private void BuildBarrierMask()
     {
         int w = Background.Width;
         int h = Background.Height;
         _barrierMask = new bool[w, h];
+        int wt = WallThickness;
+
+        // Mark wall pixels as barriers
         for (int y = 0; y < h; y++)
         {
             for (int x = 0; x < w; x++)
             {
-                var c = Background.GetPixel(x, y);
-                // Treat any pixel that is close to pure red as a barrier (tolerate antialiasing)
-                if (c.R > 200 && c.G < 50 && c.B < 50) _barrierMask[x, y] = true;
+                // All pixels within wall thickness are barriers
+                if (x < wt || x >= w - wt || y < wt || y >= h - wt)
+                {
+                    _barrierMask[x, y] = true;
+                }
             }
         }
     }
 
-    // Checks whether a point collides with a barrier pixel (or is out of bounds)
     public bool IsBarrierAt(PointF p)
     {
         int x = (int)MathF.Round(p.X);
@@ -79,7 +83,6 @@ public class Track
         return _barrierMask[x, y];
     }
 
-    // Checks whether any of the given points intersect a barrier.
     public bool CollidesWithBarrier(PointF[] points)
     {
         foreach (var pt in points)
@@ -89,33 +92,14 @@ public class Track
         return false;
     }
 
-    // Returns the geometric centre of the track (used for collision normal calculations)
     public PointF GetCenter() => new PointF(Background.Width / 2f, Background.Height / 2f);
 
-    public PointF[] GetWaypoints(int count = 16)
+    // Get the playable bounds (inside walls)
+    public RectangleF GetPlayArea()
     {
-        // Re-use the same geometry as the track constructor
-        int margin = 80; // same as above
-        int roadWidth = 150;
-        // Outer ellipse bounds (same as used for drawing)
-        var outerRect = new Rectangle(margin, margin, Background.Width - 2 * margin, Background.Height - 2 * margin);
-        // Inner ellipse is the drivable area (outerRect contracted by roadWidth)
-        var innerRect = Rectangle.Inflate(outerRect, -roadWidth, -roadWidth);
-
-        float cx = outerRect.X + outerRect.Width / 2f;
-        float cy = outerRect.Y + outerRect.Height / 2f;
-        float a = innerRect.Width / 2f; // semi‑major axis
-        float b = innerRect.Height / 2f; // semi‑minor axis
-
-        var pts = new PointF[count];
-        for (int i = 0; i < count; i++)
-        {
-            float angle = i * 2f * MathF.PI / count;
-            float x = cx + a * MathF.Cos(angle);
-            float y = cy + b * MathF.Sin(angle);
-            pts[i] = new PointF(x, y);
-        }
-        return pts;
+        int im = WallThickness + 5;
+        return new RectangleF(im, im,
+            Background.Width - 2 * im,
+            Background.Height - 2 * im);
     }
-
 }

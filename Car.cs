@@ -18,8 +18,24 @@ public class Car
     public float DriftGrip = 0.15f;
     public bool IsPlayer;
     public bool IsDrifting;
+    public bool HasShield;
     public float LastNonDriftAngle;
     public Color BodyColor;
+    public float Health = 100f;
+    public float MaxHealth = 100f;
+    public bool IsDead;
+    public bool IsTouchingBarrier;
+    public float BarrierTouchTime;
+    public float LastHitByCarTime;
+    public Car? LastHitBy;
+
+    // AI properties
+    public bool IsAI;
+    public Car? Target;
+    public float AIAggroRadius = 300f;
+    public float AIChaseRadius = 500f;
+    public float AIDecisionTimer;
+    public float AIDecisionInterval = 0.35f;
 
     public readonly float Width = 40f;
     public readonly float Height = 20f;
@@ -36,6 +52,37 @@ public class Car
         BodyColor = bodyColor;
     }
 
+    public void TakeDamage(float amount, Car? attacker)
+    {
+        if (HasShield)
+        {
+            HasShield = false;
+            return;
+        }
+        Health -= amount;
+        if (Health <= 0)
+        {
+            Health = 0;
+            IsDead = true;
+        }
+        LastHitBy = attacker;
+        LastHitByCarTime = 0;
+    }
+
+    public void Reset(PointF newPos, float newAngle)
+    {
+        Position = newPos;
+        Angle = newAngle;
+        VelocityX = 0;
+        VelocityY = 0;
+        Health = MaxHealth;
+        IsDead = false;
+        HasShield = false;
+        IsTouchingBarrier = false;
+        BarrierTouchTime = 0;
+        LastHitBy = null;
+    }
+
     public void Update(float dt, bool up, bool down, bool left, bool right, bool drift)
     {
         float speed = Speed;
@@ -44,7 +91,7 @@ public class Car
 
         IsDrifting = drift && !canPivotTurn;
 
-        if (IsPlayer)
+        if (IsPlayer || IsAI)
         {
             float rad = (Angle - 90f) * MathF.PI / 180f;
 
@@ -54,21 +101,24 @@ public class Car
                 VelocityY += MathF.Sin(rad) * Acceleration;
             }
 
+            if (down)
+            {
+                VelocityX -= MathF.Cos(rad) * Acceleration * 0.6f;
+                VelocityY -= MathF.Sin(rad) * Acceleration * 0.6f;
+            }
+
             if (canPivotTurn)
             {
-                // Pivot turn while moving slow and holding drift
                 if (left) Angle -= TurnRate;
                 if (right) Angle += TurnRate;
             }
             else if (speed > 0.1f)
             {
-                // Normal steering
                 float turnFactor = Math.Min(speed / MaxSpeed, 1f);
                 if (left) Angle -= TurnRate * turnFactor;
                 if (right) Angle += TurnRate * turnFactor;
             }
 
-            // Track last angle when not drifting for pivot return
             if (!drift)
             {
                 LastNonDriftAngle = Angle;

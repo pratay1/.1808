@@ -4,54 +4,181 @@ using System.Drawing.Drawing2D;
 
 namespace bumpercars;
 
+public enum TrackLayout
+{
+    Arena,
+    Oval,
+    Figure8,
+    Triangle
+}
+
 public class Track
 {
     public Bitmap Background { get; private set; }
-    private bool[,] _barrierMask = null!; // true = barrier pixel
+    private bool[,] _barrierMask = null!;
     public Size Size => Background.Size;
-
-    // Arena settings
+    public TrackLayout Layout { get; private set; }
     public int WallThickness { get; private set; } = 30;
     public int InnerMargin => WallThickness;
 
-    // Square arena with black walls and dark grey floor
-    public Track(int width = 800, int height = 600)
+    /// <summary>Distance from window edge used when clamping car positions (layout-specific to reduce corner grinding on curved tracks).</summary>
+    public int BoundsClampMargin { get; private set; }
+
+    public Track(int width = 800, int height = 600, TrackLayout layout = TrackLayout.Arena)
     {
+        Layout = layout;
         WallThickness = 30;
         Background = new Bitmap(width, height);
-        using (var g = Graphics.FromImage(Background))
+
+        switch (layout)
         {
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-
-            // Dark grey floor (arcade bumper car style)
-            g.Clear(Color.FromArgb(60, 60, 60));
-
-            // Draw black walls on all four sides with rounded corners
-            int wt = WallThickness;
-            using var wallBrush = new SolidBrush(Color.FromArgb(20, 20, 20));
-
-            // Top wall
-            g.FillRectangle(wallBrush, 0, 0, width, wt);
-            // Bottom wall
-            g.FillRectangle(wallBrush, 0, height - wt, width, wt);
-            // Left wall
-            g.FillRectangle(wallBrush, 0, 0, wt, height);
-            // Right wall
-            g.FillRectangle(wallBrush, width - wt, 0, wt, height);
-
-            // Corner patches to fill gaps
-            g.FillRectangle(wallBrush, 0, 0, wt, wt);
-            g.FillRectangle(wallBrush, width - wt, 0, wt, wt);
-            g.FillRectangle(wallBrush, 0, height - wt, wt, wt);
-            g.FillRectangle(wallBrush, width - wt, height - wt, wt, wt);
-
-            // Inner play area outline (subtle)
-            int im = wt + 5;
-            using var innerPen = new Pen(Color.FromArgb(40, 40, 40), 2);
-            g.DrawRectangle(innerPen, im, im, width - 2 * im, height - 2 * im);
+            case TrackLayout.Arena:
+                BuildArena(width, height);
+                break;
+            case TrackLayout.Oval:
+                BuildOval(width, height);
+                break;
+            case TrackLayout.Figure8:
+                BuildFigure8(width, height);
+                break;
+            case TrackLayout.Triangle:
+                BuildTriangle(width, height);
+                break;
         }
 
+        BoundsClampMargin = WallThickness + layout switch
+        {
+            TrackLayout.Arena => 5,
+            TrackLayout.Oval => 28,
+            TrackLayout.Figure8 => 22,
+            TrackLayout.Triangle => 26,
+            _ => 5
+        };
+
         BuildBarrierMask();
+    }
+
+    private void BuildArena(int width, int height)
+    {
+        using var g = Graphics.FromImage(Background);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.Clear(Color.FromArgb(60, 60, 60));
+
+        int wt = WallThickness;
+        using var wallBrush = new SolidBrush(Color.FromArgb(20, 20, 20));
+
+        g.FillRectangle(wallBrush, 0, 0, width, wt);
+        g.FillRectangle(wallBrush, 0, height - wt, width, wt);
+        g.FillRectangle(wallBrush, 0, 0, wt, height);
+        g.FillRectangle(wallBrush, width - wt, 0, wt, height);
+
+        g.FillRectangle(wallBrush, 0, 0, wt, wt);
+        g.FillRectangle(wallBrush, width - wt, 0, wt, wt);
+        g.FillRectangle(wallBrush, 0, height - wt, wt, wt);
+        g.FillRectangle(wallBrush, width - wt, height - wt, wt, wt);
+
+        int im = wt + 5;
+        using var innerPen = new Pen(Color.FromArgb(40, 40, 40), 2);
+        g.DrawRectangle(innerPen, im, im, width - 2 * im, height - 2 * im);
+    }
+
+    private void BuildOval(int width, int height)
+    {
+        using var g = Graphics.FromImage(Background);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.Clear(Color.FromArgb(50, 50, 50));
+
+        int wt = WallThickness;
+        using var wallBrush = new SolidBrush(Color.FromArgb(20, 20, 20));
+
+        int cx = width / 2;
+        int cy = height / 2;
+        int rx = width / 2 - wt;
+        int ry = height / 2 - wt;
+
+        // Outer oval
+        g.FillEllipse(wallBrush, wt, wt, width - 2 * wt, height - 2 * wt);
+
+        // Inner cutout (play area)
+        int innerRx = rx - 60;
+        int innerRy = ry - 60;
+        using var floorBrush = new SolidBrush(Color.FromArgb(70, 70, 70));
+        g.FillEllipse(floorBrush, cx - innerRx, cy - innerRy, innerRx * 2, innerRy * 2);
+
+        // Draw track lines
+        using var linePen = new Pen(Color.FromArgb(50, 50, 50), 3);
+        g.DrawEllipse(linePen, cx - innerRx, cy - innerRy, innerRx * 2, innerRy * 2);
+    }
+
+    private void BuildFigure8(int width, int height)
+    {
+        using var g = Graphics.FromImage(Background);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.Clear(Color.FromArgb(50, 50, 50));
+
+        int wt = WallThickness;
+        using var wallBrush = new SolidBrush(Color.FromArgb(20, 20, 20));
+        using var floorBrush = new SolidBrush(Color.FromArgb(70, 70, 70));
+
+        g.FillRectangle(wallBrush, 0, 0, width, wt);
+        g.FillRectangle(wallBrush, 0, height - wt, width, wt);
+        g.FillRectangle(wallBrush, 0, 0, wt, height);
+        g.FillRectangle(wallBrush, width - wt, 0, wt, height);
+
+        int im = wt + 5;
+        g.FillRectangle(wallBrush, im, im, width - 2 * im, height - 2 * im);
+
+        float cx = width / 2f;
+        float cy = height / 2f;
+        float innerW = width - 2 * im;
+        float innerH = height - 2 * im;
+        float r = Math.Min(innerW, innerH) * 0.38f;
+        float sep = r * 0.58f;
+
+        using var peanut = new GraphicsPath();
+        peanut.FillMode = FillMode.Winding;
+        float d = r * 2f;
+        peanut.AddEllipse(cx - sep - r, cy - r, d, d);
+        peanut.AddEllipse(cx + sep - r, cy - r, d, d);
+        g.FillPath(floorBrush, peanut);
+
+        using var linePen = new Pen(Color.FromArgb(50, 50, 50), 3);
+        g.DrawPath(linePen, peanut);
+    }
+
+    private void BuildTriangle(int width, int height)
+    {
+        using var g = Graphics.FromImage(Background);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.Clear(Color.FromArgb(50, 50, 50));
+
+        int wt = WallThickness;
+        using var wallBrush = new SolidBrush(Color.FromArgb(20, 20, 20));
+        using var floorBrush = new SolidBrush(Color.FromArgb(70, 70, 70));
+
+        var points = new PointF[]
+        {
+            new PointF(width / 2, wt + 10),
+            new PointF(wt + 10, height - wt - 10),
+            new PointF(width - wt - 10, height - wt - 10)
+        };
+
+        // Draw triangular wall
+        var wallPath = new System.Drawing.Drawing2D.GraphicsPath();
+        wallPath.AddPolygon(points);
+        g.FillPolygon(wallBrush, points);
+
+        // Inner triangle for play area
+        var innerPoints = new PointF[]
+        {
+            new PointF(width / 2, wt + 60),
+            new PointF(wt + 50, height - wt - 50),
+            new PointF(width - wt - 50, height - wt - 50)
+        };
+        g.FillPolygon(floorBrush, innerPoints);
+
+        using var linePen = new Pen(Color.FromArgb(50, 50, 50), 3);
+        g.DrawPolygon(linePen, innerPoints);
     }
 
     private void BuildBarrierMask()
@@ -59,20 +186,29 @@ public class Track
         int w = Background.Width;
         int h = Background.Height;
         _barrierMask = new bool[w, h];
-        int wt = WallThickness;
 
-        // Mark wall pixels as barriers
+        // Check pixel colors - walls are drawn in dark color (20, 20, 20)
+        var wallColor = Color.FromArgb(20, 20, 20);
+        int colorTolerance = 15;
+
         for (int y = 0; y < h; y++)
         {
             for (int x = 0; x < w; x++)
             {
-                // All pixels within wall thickness are barriers
-                if (x < wt || x >= w - wt || y < wt || y >= h - wt)
+                var pixel = ((Bitmap)Background).GetPixel(x, y);
+                if (IsSimilarColor(pixel, wallColor, colorTolerance))
                 {
                     _barrierMask[x, y] = true;
                 }
             }
         }
+    }
+
+    private bool IsSimilarColor(Color a, Color b, int tolerance)
+    {
+        return Math.Abs(a.R - b.R) <= tolerance &&
+               Math.Abs(a.G - b.G) <= tolerance &&
+               Math.Abs(a.B - b.B) <= tolerance;
     }
 
     public bool IsBarrierAt(PointF p)

@@ -8,7 +8,7 @@ public class GameForm : Form
 {
     private Timer _timer;
     private GameState _gameState;
-    private bool _up, _down, _left, _right, _drift;
+    private bool _up, _down, _left, _right, _drift, _useRepulsor;
     private int _lastTick;
 
     public GameForm(TrackLayout layout = TrackLayout.Arena)
@@ -56,6 +56,8 @@ public class GameForm : Form
                 _right = true; break;
             case Keys.Space:
                 _drift = true; break;
+            case Keys.E:
+                _useRepulsor = true; break;
             case Keys.R:
                 if (_gameState.IsGameOver)
                 {
@@ -83,6 +85,8 @@ public class GameForm : Form
                 _right = false; break;
             case Keys.Space:
                 _drift = false; break;
+            case Keys.E:
+                _useRepulsor = false; break;
         }
     }
 
@@ -95,7 +99,7 @@ public class GameForm : Form
         _lastTick = now;
         float dt = delta / 1000f;
 
-        _gameState.Update(dt, _up, _down, _left, _right, _drift);
+        _gameState.Update(dt, _up, _down, _left, _right, _drift, _useRepulsor);
 
         Invalidate();
     }
@@ -107,14 +111,17 @@ public class GameForm : Form
 
         g.DrawImage(_gameState.Track.Background, 0, 0);
 
-        // Render power-ups
+        foreach (var fx in _gameState.RepulsorEffects)
+        {
+            RenderRepulsorEffect(g, fx);
+        }
+
         foreach (var pu in _gameState.PowerUps)
         {
             pu.Rotation += 2f;
             RenderPowerUp(g, pu);
         }
 
-        // Render cars
         foreach (var car in _gameState.Cars)
         {
             car.Render(g);
@@ -128,10 +135,9 @@ public class GameForm : Form
             }
         }
 
-        // Render HUD
         RenderHUD(g);
+        RenderChargeBar(g);
 
-        // Render pause/game over
         if (_gameState.IsPaused)
         {
             RenderPauseScreen(g);
@@ -140,6 +146,93 @@ public class GameForm : Form
         {
             RenderGameOverScreen(g);
         }
+    }
+
+    private void RenderRepulsorEffect(Graphics g, RepulsorEffect fx)
+    {
+        float progress = 1f - (fx.Life / fx.MaxLife);
+        float currentRadius = fx.Radius * progress;
+
+        float pulse = MathF.Sin(DateTime.Now.Ticks / 500000f) * 0.15f + 1f;
+
+        int alpha = (int)(200 * (fx.Life / fx.MaxLife));
+
+        using var brush1 = new SolidBrush(Color.FromArgb(alpha / 2, 0, 150, 255));
+        using var brush2 = new SolidBrush(Color.FromArgb(alpha, 100, 200, 255));
+        using var pen1 = new Pen(Color.FromArgb(alpha, 150, 200, 255), 4);
+        using var pen2 = new Pen(Color.FromArgb(alpha, 200, 230, 255), 2);
+
+        g.FillEllipse(brush1,
+            fx.Origin.X - currentRadius * pulse,
+            fx.Origin.Y - currentRadius * pulse,
+            currentRadius * 2 * pulse,
+            currentRadius * 2 * pulse);
+
+        g.DrawEllipse(pen1,
+            fx.Origin.X - currentRadius,
+            fx.Origin.Y - currentRadius,
+            currentRadius * 2,
+            currentRadius * 2);
+
+        g.DrawEllipse(pen2,
+            fx.Origin.X - currentRadius * 0.7f,
+            fx.Origin.Y - currentRadius * 0.7f,
+            currentRadius * 1.4f,
+            currentRadius * 1.4f);
+
+        int ringCount = 3;
+        for (int i = 0; i < ringCount; i++)
+        {
+            float ringProgress = (progress + i * 0.15f) % 1f;
+            float ringRadius = fx.Radius * ringProgress;
+            int ringAlpha = (int)(alpha * (1f - ringProgress) * 0.5f);
+            using var ringPen = new Pen(Color.FromArgb(ringAlpha, 100, 200, 255), 2);
+            g.DrawEllipse(ringPen,
+                fx.Origin.X - ringRadius,
+                fx.Origin.Y - ringRadius,
+                ringRadius * 2,
+                ringRadius * 2);
+        }
+    }
+
+    private void RenderChargeBar(Graphics g)
+    {
+        var player = _gameState.Cars.Find(c => c.IsPlayer);
+        if (player == null || player.IsDead) return;
+
+        float barWidth = 160f;
+        float barHeight = 16f;
+        float x = (ClientSize.Width - barWidth) / 2;
+        float y = ClientSize.Height - 35f;
+
+        var bgBrush = new SolidBrush(Color.FromArgb(40, 40, 40));
+        g.FillRectangle(bgBrush, x - 2, y - 2, barWidth + 4, barHeight + 4);
+
+        float fill = Math.Min(1f, player.RepulsorCharge / GameState.RepulsorChargeTime);
+        Color fillColor;
+        if (fill >= 1f)
+        {
+            float pulse = MathF.Sin(DateTime.Now.Ticks / 200000f) * 0.3f + 0.7f;
+            fillColor = Color.FromArgb((int)(255 * pulse), 0, 255);
+        }
+        else
+        {
+            fillColor = Color.FromArgb(0, 150, 255);
+        }
+
+        using var fillBrush = new SolidBrush(fillColor);
+        g.FillRectangle(fillBrush, x, y, barWidth * fill, barHeight);
+
+        using var borderPen = new Pen(Color.FromArgb(200, 200, 200), 2);
+        g.DrawRectangle(borderPen, x, y, barWidth, barHeight);
+
+        string label = fill >= 1f ? "[E] REPULSOR READY" : $"[E] Charging... {(int)(fill * 100)}%";
+        using var labelFont = new Font("Segoe UI", 10, FontStyle.Bold);
+        using var labelBrush = new SolidBrush(fill >= 1f ? Color.White : Color.FromArgb(180, 180, 180));
+        var labelSize = g.MeasureString(label, labelFont);
+        float labelX = (ClientSize.Width - labelSize.Width) / 2;
+        float labelY = y - labelSize.Height - 3;
+        g.DrawString(label, labelFont, labelBrush, labelX, labelY);
     }
 
     private void RenderPowerUp(Graphics g, PowerUp pu)
@@ -175,16 +268,13 @@ public class GameForm : Form
         float x = center.X - barWidth / 2;
         float y = center.Y - car.Height / 2 - 12;
 
-        // Background
         var bgBrush = new SolidBrush(Color.FromArgb(50, 0, 0));
         g.FillRectangle(bgBrush, x, y, barWidth, barHeight);
 
-        // Health
         float healthPercent = car.Health / car.MaxHealth;
         var healthBrush = new SolidBrush(healthPercent > 0.5f ? Color.Lime : healthPercent > 0.25f ? Color.Orange : Color.Red);
         g.FillRectangle(healthBrush, x, y, barWidth * healthPercent, barHeight);
 
-        // Border
         var pen = new Pen(Color.White, 1);
         g.DrawRectangle(pen, x, y, barWidth, barHeight);
     }
@@ -200,31 +290,18 @@ public class GameForm : Form
     {
         if (_gameState.Cars.Find(c => c.IsPlayer) is Car player)
         {
-            // Speed
-            int speedPercent = (int)((player.Speed / player.MaxSpeed) * 100);
-            string hud = $"Speed: {speedPercent}%";
             using var hudFont = new Font("Segoe UI", 14, FontStyle.Bold);
             using var hudBrush = new SolidBrush(Color.White);
-            g.DrawString(hud, hudFont, hudBrush, new PointF(15, 15));
 
-            // Health
-            string healthHud = $"Health: {(int)player.Health}%";
+            g.DrawString($"Speed: {(int)((player.Speed / player.MaxSpeed) * 100)}%", hudFont, hudBrush, new PointF(15, 15));
+
             using var healthBrush = new SolidBrush(player.Health > 50 ? Color.Lime : player.Health > 25 ? Color.Orange : Color.Red);
-            g.DrawString(healthHud, hudFont, healthBrush, new PointF(15, 35));
+            g.DrawString($"Health: {(int)player.Health}%", hudFont, healthBrush, new PointF(15, 35));
 
-            // Alive count
-            string aliveHud = $"Alive: {_gameState.AliveCount}/{_gameState.Cars.Count}";
-            g.DrawString(aliveHud, hudFont, hudBrush, new PointF(15, 55));
+            g.DrawString($"Alive: {_gameState.AliveCount}/{_gameState.Cars.Count}", hudFont, hudBrush, new PointF(15, 55));
+            g.DrawString($"Time: {_gameState.GameTime:F1}s", hudFont, hudBrush, new PointF(15, 75));
+            g.DrawString($"Best: {_gameState.HighScore:F1}s", hudFont, hudBrush, new PointF(15, 95));
 
-            // Timer
-            string timeHud = $"Time: {_gameState.GameTime:F1}s";
-            g.DrawString(timeHud, hudFont, hudBrush, new PointF(15, 75));
-
-            // High score
-            string hsHud = $"Best: {_gameState.HighScore:F1}s";
-            g.DrawString(hsHud, hudFont, hudBrush, new PointF(15, 95));
-
-            // Controls hint
             using var hintFont = new Font("Segoe UI", 10);
             using var hintBrush = new SolidBrush(Color.FromArgb(150, 150, 150));
             g.DrawString("ESC: Pause", hintFont, hintBrush, new PointF(15, ClientSize.Height - 28));

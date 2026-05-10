@@ -219,6 +219,63 @@ public class Track
         return _barrierMask[x, y];
     }
 
+    public bool IsShapeBarrierAt(PointF p, int margin = 4)
+    {
+        int x = (int)MathF.Round(p.X);
+        int y = (int)MathF.Round(p.Y);
+
+        int w = Background.Width;
+        int h = Background.Height;
+
+        if (x < margin || y < margin || x >= w - margin || y >= h - margin) return true;
+
+        for (int dx = -margin; dx <= margin; dx++)
+        {
+            for (int dy = -margin; dy <= margin; dy++)
+            {
+                int px = x + dx;
+                int py = y + dy;
+                if (px >= 0 && py >= 0 && px < w && py < h)
+                {
+                    if (_barrierMask[px, py]) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public float DistanceToWall(PointF p)
+    {
+        float minDist = float.MaxValue;
+
+        int searchRange = 60;
+        int x0 = Math.Max(0, (int)p.X - searchRange);
+        int y0 = Math.Max(0, (int)p.Y - searchRange);
+        int x1 = Math.Min(Background.Width - 1, (int)p.X + searchRange);
+        int y1 = Math.Min(Background.Height - 1, (int)p.Y + searchRange);
+
+        for (int y = y0; y <= y1; y++)
+        {
+            for (int x = x0; x <= x1; x++)
+            {
+                if (_barrierMask[x, y])
+                {
+                    float d = MathF.Sqrt((x - p.X) * (x - p.X) + (y - p.Y) * (y - p.Y));
+                    if (d < minDist) minDist = d;
+                }
+            }
+        }
+
+        return minDist == float.MaxValue ? 500f : minDist;
+    }
+
+    public float GetWallProximityFactor(PointF p)
+    {
+        float dist = DistanceToWall(p);
+        if (dist < 30f) return 1f - (dist / 30f);
+        return 0f;
+    }
+
     public bool CollidesWithBarrier(PointF[] points)
     {
         foreach (var pt in points)

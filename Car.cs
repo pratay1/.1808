@@ -32,10 +32,21 @@ public class Car
     // AI properties
     public bool IsAI;
     public Car? Target;
+    public AIState AIState = AIState.Wandering;
+    public PowerUp? TargetPowerUp;
+    public PointF SafeZone = new PointF(0, 0);
+    public Car? RageTarget;
+    public float RageTimer;
     public float AIAggroRadius = 300f;
     public float AIChaseRadius = 500f;
     public float AIDecisionTimer;
-    public float AIDecisionInterval = 0.35f;
+    public float AIDecisionInterval = 0.25f;
+
+    // Repulsor ability
+    public float RepulsorCharge = 0f;
+    public bool IsStunned;
+    public float StunTimer;
+    public float RepulsorCooldownTimer;
 
     public readonly float Width = 40f;
     public readonly float Height = 20f;
@@ -65,8 +76,11 @@ public class Car
             Health = 0;
             IsDead = true;
         }
-        LastHitBy = attacker;
-        LastHitByCarTime = 0;
+        if (attacker != null && attacker != this)
+        {
+            LastHitBy = attacker;
+            LastHitByCarTime = 0.001f;
+        }
     }
 
     public void Reset(PointF newPos, float newAngle)
@@ -81,10 +95,29 @@ public class Car
         IsTouchingBarrier = false;
         BarrierTouchTime = 0;
         LastHitBy = null;
+        RepulsorCharge = 0f;
+        IsStunned = false;
+        StunTimer = 0;
+        RepulsorCooldownTimer = 0;
     }
 
     public void Update(float dt, bool up, bool down, bool left, bool right, bool drift)
     {
+        if (IsStunned)
+        {
+            StunTimer -= dt;
+            VelocityX *= 0.85f;
+            VelocityY *= 0.85f;
+            Position.X += VelocityX;
+            Position.Y += VelocityY;
+            if (StunTimer <= 0)
+            {
+                IsStunned = false;
+                StunTimer = 0;
+            }
+            return;
+        }
+
         float speed = Speed;
         float maxSpeedThreshold = MaxSpeed * 0.2f;
         bool canPivotTurn = speed < maxSpeedThreshold && drift;
@@ -132,7 +165,6 @@ public class Car
         }
         else
         {
-            // When pivot turning, maintain velocity direction, very low grip
             float gripAmount = DriftGrip;
             VelocityX *= (1f - gripAmount) + gripAmount;
             VelocityY *= (1f - gripAmount) + gripAmount;
@@ -226,5 +258,28 @@ public class Car
         g.FillRectangle(lb, (int)(hw - 3), (int)(hh - 7), 3, 4);
 
         g.Transform = saved;
+
+        if (IsStunned)
+        {
+            RenderStunEffect(g, center);
+        }
+    }
+
+    private void RenderStunEffect(Graphics g, PointF center)
+    {
+        float t = DateTime.Now.Ticks / 10000000.0f;
+        int stars = 3;
+        for (int i = 0; i < stars; i++)
+        {
+            float angle = t * 3f + i * 2.094f;
+            float radius = 30f + MathF.Sin(t * 5f + i) * 5f;
+            float sx = center.X + MathF.Cos(angle) * radius;
+            float sy = center.Y + MathF.Sin(angle) * radius;
+
+            var starPen = new Pen(Color.FromArgb(200, 255, 255, 0), 2);
+            float starSize = 6f;
+            g.DrawLine(starPen, sx - starSize, sy - starSize, sx + starSize, sy + starSize);
+            g.DrawLine(starPen, sx + starSize, sy - starSize, sx - starSize, sy + starSize);
+        }
     }
 }

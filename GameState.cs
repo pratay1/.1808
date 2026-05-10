@@ -9,12 +9,18 @@ public class GameState
     public Track Track { get; private set; }
     public List<Car> Cars { get; private set; } = new();
     public List<PowerUp> PowerUps { get; private set; } = new();
+    public List<RepulsorEffect> RepulsorEffects { get; private set; } = new();
     public bool IsGameOver;
     public bool IsPaused;
     public int AliveCount;
     public float GameTime;
     public Car? Winner;
     public float HighScore { get; private set; }
+
+    public const float RepulsorChargeTime = 5f;
+    public const float RepulsorRadius = 120f;
+    public const float RepulsorForce = 25f;
+    public const float RepulsorStunDuration = 1.5f;
 
     private readonly Random _rng = new();
 
@@ -29,30 +35,25 @@ public class GameState
     {
         var playArea = Track.GetPlayArea();
 
-        // Player car - red
         var playerCar = new Car(new PointF(playArea.X + playArea.Width * 0.3f, playArea.Y + playArea.Height / 2), true, Color.FromArgb(204, 0, 0));
         playerCar.Angle = 0f;
         Cars.Add(playerCar);
 
-        // AI Bot 1 - blue
         var bot1 = new Car(new PointF(playArea.X + playArea.Width * 0.7f, playArea.Y + playArea.Height * 0.3f), false, Color.FromArgb(0, 100, 255));
         bot1.IsAI = true;
         bot1.Angle = 180f;
         Cars.Add(bot1);
 
-        // AI Bot 2 - green
         var bot2 = new Car(new PointF(playArea.X + playArea.Width * 0.7f, playArea.Y + playArea.Height * 0.7f), false, Color.FromArgb(0, 200, 100));
         bot2.IsAI = true;
         bot2.Angle = 180f;
         Cars.Add(bot2);
 
-        // AI Bot 3 - yellow
         var bot3 = new Car(new PointF(playArea.X + playArea.Width * 0.5f, playArea.Y + playArea.Height * 0.2f), false, Color.FromArgb(255, 200, 0));
         bot3.IsAI = true;
         bot3.Angle = 90f;
         Cars.Add(bot3);
 
-        // AI Bot 4 - magenta
         var bot4 = new Car(new PointF(playArea.X + playArea.Width * 0.5f, playArea.Y + playArea.Height * 0.8f), false, Color.FromArgb(200, 0, 200));
         bot4.IsAI = true;
         bot4.Angle = 270f;
@@ -61,22 +62,50 @@ public class GameState
         AliveCount = Cars.Count;
     }
 
-    public void Update(float dt, bool up, bool down, bool left, bool right, bool drift)
+    public void Update(float dt, bool up, bool down, bool left, bool right, bool drift, bool useRepulsor)
     {
         if (IsPaused || IsGameOver) return;
 
         GameTime += dt;
 
-        // Update AI
+        foreach (var car in Cars)
+        {
+            if (car.IsDead) continue;
+
+            if (car.RepulsorCharge < RepulsorChargeTime)
+                car.RepulsorCharge = Math.Min(RepulsorChargeTime, car.RepulsorCharge + dt);
+
+            if (car.IsStunned) car.StunTimer -= dt;
+
+            if (car.RepulsorCooldownTimer > 0)
+                car.RepulsorCooldownTimer -= dt;
+        }
+
+        var player = Cars.Find(c => c.IsPlayer);
+        if (player != null && !player.IsDead && !player.IsStunned)
+        {
+            if (useRepulsor && player.RepulsorCharge >= RepulsorChargeTime)
+            {
+                TriggerRepulsor(player);
+            }
+        }
+
         foreach (var car in Cars)
         {
             if (car.IsAI && !car.IsDead)
             {
-                AIController.UpdateAI(car, Cars, Track, dt);
+                if (car.RageTimer > 0) car.RageTimer -= dt;
+                AIController.SetGlobalCarList(Cars);
+                AIController.UpdateAI(car, Cars, Track, dt, PowerUps, this);
             }
         }
 
-        // Update player input
+        foreach (var car in Cars)
+        {
+            if (car.LastHitByCarTime >= 0)
+                car.LastHitByCarTime += dt;
+        }
+
         foreach (var car in Cars)
         {
             if (car.IsPlayer && !car.IsDead)
@@ -85,20 +114,55 @@ public class GameState
             }
             else if (car.IsDead)
             {
-                // Dead cars still get updated for physics but no input
                 car.Update(dt, false, false, false, false, false);
             }
         }
 
-        // Handle collisions
         HandleCarCollisions();
         HandleBarrierCollisions();
-
-        // Update power-ups
         UpdatePowerUps(dt);
 
-        // Check win condition
+        for (int i = RepulsorEffects.Count - 1; i >= 0; i--)
+        {
+            RepulsorEffects[i].Life -= dt;
+            if (RepulsorEffects[i].Life <= 0)
+                RepulsorEffects.RemoveAt(i);
+        }
+
         CheckGameOver();
+    }
+
+    public void TriggerRepulsor(Car source)
+    {
+        source.RepulsorCharge = 0f;
+        source.RepulsorCooldownTimer = 0.5f;
+
+        RepulsorEffects.Add(new RepulsorEffect(source.GetCenter(), RepulsorRadius));
+
+        foreach (var car in Cars)
+        {
+            if (car == source || car.IsDead) continue;
+
+            float dx = car.GetCenter().X - source.GetCenter().X;
+            float dy = car.GetCenter().Y - source.GetCenter().Y;
+            float dist = MathF.Sqrt(dx * dx + dy * dy);
+
+            if (dist < RepulsorRadius)
+            {
+                float force = RepulsorForce * (1f - dist / RepulsorRadius);
+                float nx = dx / (dist + 0.1f);
+                float ny = dy / (dist + 0.1f);
+
+                car.VelocityX += nx * force;
+                car.VelocityY += ny * force;
+
+                if (!car.HasShield)
+                {
+                    car.IsStunned = true;
+                    car.StunTimer = RepulsorStunDuration;
+                }
+            }
+        }
     }
 
     private void HandleCarCollisions()
@@ -141,11 +205,9 @@ public class GameState
         float dist = MathF.Sqrt(dx * dx + dy * dy);
         if (dist < 0.1f) dist = 0.1f;
 
-        // Normalize direction
         float nx = dx / dist;
         float ny = dy / dist;
 
-        // Separate cars
         float overlap = (a.Width + b.Width) / 2.5f - dist;
         if (overlap > 0)
         {
@@ -155,45 +217,36 @@ public class GameState
             b.Position.Y += ny * overlap * 0.5f;
         }
 
-        // Calculate relative velocity
         float relVelX = a.VelocityX - b.VelocityX;
         float relVelY = a.VelocityY - b.VelocityY;
         float relVelDot = relVelX * nx + relVelY * ny;
 
-        // Only process if cars are moving toward each other
         if (relVelDot < 0)
         {
             float aSpeedPercent = (a.Speed / a.MaxSpeed) * 100f;
             float bSpeedPercent = (b.Speed / b.MaxSpeed) * 100f;
 
-            // Determine who hits whom based on relative velocity direction
-            // If a is moving faster toward b, a hits b
             bool aHitsB = relVelDot < 0;
 
             if (aHitsB)
             {
-                // B takes damage: 1 * (a.speed% / 10)
                 float damage = 1f * (aSpeedPercent / 10f);
                 b.TakeDamage(damage, a);
             }
             else
             {
-                // A takes damage: 1 * (b.speed% / 10)
                 float damage = 1f * (bSpeedPercent / 10f);
                 a.TakeDamage(damage, b);
             }
 
-            // Calculate pushback based on speed percentage
             float pushStrengthA = bSpeedPercent / 100f * 15f;
             float pushStrengthB = aSpeedPercent / 100f * 15f;
 
-            // Apply pushback impulse
             a.VelocityX -= nx * pushStrengthB;
             a.VelocityY -= ny * pushStrengthB;
             b.VelocityX += nx * pushStrengthA;
             b.VelocityY += ny * pushStrengthA;
 
-            // Bounce effect - swap some velocity
             float bounce = 0.8f;
             float tempVx = a.VelocityX;
             float tempVy = a.VelocityY;
@@ -223,24 +276,44 @@ public class GameState
                 car.BarrierTouchTime = 0;
             }
 
-            // Barrier damage: 10 damage per second while touching
             if (car.IsTouchingBarrier)
             {
-                car.BarrierTouchTime += 1f / 60f; // Approximate
+                car.BarrierTouchTime += 1f / 60f;
                 float damagePerSecond = 10f;
                 float damage = damagePerSecond * (1f / 60f);
                 car.TakeDamage(damage, null);
             }
 
-            // Keep car in bounds
             KeepCarInBounds(car);
         }
     }
 
     private bool IsTouchingBarrier(Car car)
     {
-        var corners = GetCarCorners(car);
-        foreach (var pt in corners)
+        var center = car.GetCenter();
+        float rad = (car.Angle - 90f) * MathF.PI / 180f;
+        float cos = MathF.Cos(rad);
+        float sin = MathF.Sin(rad);
+        float hw = car.Width / 2f + 4f;
+        float hh = car.Height / 2f + 2f;
+
+        var checkPoints = new PointF[]
+        {
+            new PointF(center.X + cos * hw, center.Y + sin * hw),
+            new PointF(center.X - cos * hw, center.Y - sin * hw),
+            new PointF(center.X + sin * hh, center.Y - cos * hh),
+            new PointF(center.X - sin * hh, center.Y + cos * hh),
+            new PointF(center.X + cos * hw * 0.7f + sin * hh * 0.7f, center.Y + sin * hw * 0.7f - cos * hh * 0.7f),
+            new PointF(center.X + cos * hw * 0.7f - sin * hh * 0.7f, center.Y + sin * hw * 0.7f + cos * hh * 0.7f),
+            new PointF(center.X - cos * hw * 0.7f + sin * hh * 0.7f, center.Y - sin * hw * 0.7f - cos * hh * 0.7f),
+            new PointF(center.X - cos * hw * 0.7f - sin * hh * 0.7f, center.Y - sin * hw * 0.7f + cos * hh * 0.7f),
+            new PointF(center.X + cos * hw * 0.5f, center.Y + sin * hw * 0.5f),
+            new PointF(center.X - cos * hw * 0.5f, center.Y - sin * hw * 0.5f),
+            new PointF(center.X + sin * hh * 0.5f, center.Y - cos * hh * 0.5f),
+            new PointF(center.X - sin * hh * 0.5f, center.Y + cos * hh * 0.5f),
+        };
+
+        foreach (var pt in checkPoints)
         {
             if (Track.IsBarrierAt(pt)) return true;
         }
@@ -309,13 +382,11 @@ public class GameState
 
     private void UpdatePowerUps(float dt)
     {
-        // Spawn power-ups occasionally
         if (_rng.NextDouble() < 0.001 && PowerUps.Count < 3)
         {
             SpawnPowerUp();
         }
 
-        // Check collision with power-ups
         foreach (var car in Cars)
         {
             if (car.IsDead) continue;
@@ -391,7 +462,6 @@ public class GameState
             IsGameOver = true;
             Winner = lastAlive;
 
-            // Save high score
             if (GameTime > HighScore)
             {
                 HighScore = GameTime;
@@ -399,11 +469,9 @@ public class GameState
             }
         }
 
-        // Also check if player is dead
         var player = Cars.Find(c => c.IsPlayer);
         if (player != null && player.IsDead)
         {
-            // Give a moment before game over
             if (alive <= 1)
             {
                 IsGameOver = true;
@@ -420,6 +488,7 @@ public class GameState
     {
         Cars.Clear();
         PowerUps.Clear();
+        RepulsorEffects.Clear();
         IsGameOver = false;
         IsPaused = false;
         GameTime = 0;
@@ -444,5 +513,20 @@ public class PowerUp
     {
         Position = pos;
         Type = type;
+    }
+}
+
+public class RepulsorEffect
+{
+    public PointF Origin;
+    public float Radius;
+    public float Life;
+    public float MaxLife = 0.5f;
+
+    public RepulsorEffect(PointF origin, float radius)
+    {
+        Origin = origin;
+        Radius = radius;
+        Life = MaxLife;
     }
 }
